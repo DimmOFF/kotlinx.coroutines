@@ -76,14 +76,25 @@ public fun <E> produce(
     context: CoroutineContext = DefaultDispatcher,
     capacity: Int = 0,
     parent: Job? = null,
+    onCompletion: CompletionHandler? = null,
     block: suspend ProducerScope<E>.() -> Unit
 ): ReceiveChannel<E> {
     val channel = Channel<E>(capacity)
     val newContext = newCoroutineContext(context, parent)
     val coroutine = ProducerCoroutine(newContext, channel)
+    if (onCompletion != null) coroutine.invokeOnCompletion(handler = onCompletion)
     coroutine.start(CoroutineStart.DEFAULT, coroutine, block)
     return coroutine
 }
+
+/** @suppress **Deprecated**: Binary compatibility */
+@Deprecated(message = "Binary compatibility", level = DeprecationLevel.HIDDEN)
+public fun <E> produce(
+    context: CoroutineContext = DefaultDispatcher,
+    capacity: Int = 0,
+    parent: Job? = null,
+    block: suspend ProducerScope<E>.() -> Unit
+): ReceiveChannel<E> = produce(context, capacity, parent, block = block)
 
 /** @suppress **Deprecated**: Binary compatibility */
 @Deprecated(message = "Binary compatibility", level = DeprecationLevel.HIDDEN)

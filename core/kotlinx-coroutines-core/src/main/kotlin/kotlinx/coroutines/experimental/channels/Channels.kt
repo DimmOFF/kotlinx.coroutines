@@ -78,7 +78,7 @@ public inline fun <E, R> BroadcastChannel<E>.consume(block: SubscriptionReceiveC
 /**
  * Subscribes to this [BroadcastChannel] and performs the specified action for each received element.
  */
-public inline suspend fun <E> BroadcastChannel<E>.consumeEach(action: (E) -> Unit) =
+public suspend inline fun <E> BroadcastChannel<E>.consumeEach(action: (E) -> Unit) =
     consume {
         for (element in this) action(element)
     }
@@ -93,24 +93,39 @@ public suspend fun <E> BroadcastChannel<E>.consumeEach(action: suspend (E) -> Un
 // -------- Operations on ReceiveChannel --------
 
 /**
+ * Returns a [CompletionHandler] that invokes [cancel][ReceiveChannel.cancel] on the [ReceiveChannel]
+ * with the corresponding cause.
+ */
+public val ReceiveChannel<*>.cancel: CompletionHandler
+    get() = { cause: Throwable? -> cancel(cause) }
+
+/**
  * Makes sure that the given [block] consumes all elements from the given channel
  * by always invoking [cancel][ReceiveChannel.cancel] after the execution of the block.
+ *
+ * The operation is _terminal_.
  */
-public inline fun <E, R> ReceiveChannel<E>.consume(block: ReceiveChannel<E>.() -> R): R =
+public inline fun <E, R> ReceiveChannel<E>.consume(block: ReceiveChannel<E>.() -> R): R {
+    var cause: Throwable? = null
     try {
-        block()
+        return block()
+    } catch (e: Throwable) {
+        cause = e
+        throw e
     } finally {
-        cancel()
+        cancel(cause)
     }
+}
 
 /**
  * Performs the given [action] for each received element.
  *
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * The operation is _terminal_.
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.consumeEach(action: (E) -> Unit) =
+public suspend inline fun <E> ReceiveChannel<E>.consumeEach(action: (E) -> Unit) =
     consume {
-        for (element in this) action(element)
+        for (e in this) action(e)
     }
 
 /**
@@ -123,9 +138,10 @@ public suspend fun <E> ReceiveChannel<E>.consumeEach(action: suspend (E) -> Unit
 /**
  * Performs the given [action] for each received element.
  *
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * The operation is _terminal_.
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.consumeEachIndexed(action: (IndexedValue<E>) -> Unit) {
+public suspend inline fun <E> ReceiveChannel<E>.consumeEachIndexed(action: (IndexedValue<E>) -> Unit) {
     var index = 0
     consumeEach {
         action(IndexedValue(index++, it))
@@ -136,7 +152,7 @@ public inline suspend fun <E> ReceiveChannel<E>.consumeEachIndexed(action: (Inde
  * Returns an element at the given [index] or throws an [IndexOutOfBoundsException] if the [index] is out of bounds of this channel.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.elementAt(index: Int): E =
     elementAtOrElse(index) { throw IndexOutOfBoundsException("ReceiveChannel doesn't contain element at index $index.") }
@@ -145,9 +161,9 @@ public suspend fun <E> ReceiveChannel<E>.elementAt(index: Int): E =
  * Returns an element at the given [index] or the result of calling the [defaultValue] function if the [index] is out of bounds of this channel.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.elementAtOrElse(index: Int, defaultValue: (Int) -> E): E =
+public suspend inline fun <E> ReceiveChannel<E>.elementAtOrElse(index: Int, defaultValue: (Int) -> E): E =
     consume {
         if (index < 0)
             return defaultValue(index)
@@ -163,7 +179,7 @@ public inline suspend fun <E> ReceiveChannel<E>.elementAtOrElse(index: Int, defa
  * Returns an element at the given [index] or `null` if the [index] is out of bounds of this channel.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.elementAtOrNull(index: Int): E? =
     consume {
@@ -181,18 +197,18 @@ public suspend fun <E> ReceiveChannel<E>.elementAtOrNull(index: Int): E? =
  * Returns the first element matching the given [predicate], or `null` if no such element was found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.find(predicate: (E) -> Boolean): E? =
+public suspend inline fun <E> ReceiveChannel<E>.find(predicate: (E) -> Boolean): E? =
     firstOrNull(predicate)
 
 /**
  * Returns the last element matching the given [predicate], or `null` if no such element was found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.findLast(predicate: (E) -> Boolean): E? =
+public suspend inline fun <E> ReceiveChannel<E>.findLast(predicate: (E) -> Boolean): E? =
     lastOrNull(predicate)
 
 /**
@@ -200,7 +216,7 @@ public inline suspend fun <E> ReceiveChannel<E>.findLast(predicate: (E) -> Boole
  * @throws [NoSuchElementException] if the channel is empty.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.first(): E =
     consume {
@@ -215,9 +231,9 @@ public suspend fun <E> ReceiveChannel<E>.first(): E =
  * @throws [NoSuchElementException] if no such element is found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.first(predicate: (E) -> Boolean): E {
+public suspend inline fun <E> ReceiveChannel<E>.first(predicate: (E) -> Boolean): E {
     consumeEach {
         if (predicate(it)) return it
     }
@@ -228,7 +244,7 @@ public inline suspend fun <E> ReceiveChannel<E>.first(predicate: (E) -> Boolean)
  * Returns the first element, or `null` if the channel is empty.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.firstOrNull(): E? =
     consume {
@@ -242,7 +258,7 @@ public suspend fun <E> ReceiveChannel<E>.firstOrNull(): E? =
  * Returns the first element matching the given [predicate], or `null` if element was not found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public inline suspend fun <E> ReceiveChannel<E>.firstOrNull(predicate: (E) -> Boolean): E? {
     consumeEach {
@@ -255,7 +271,7 @@ public inline suspend fun <E> ReceiveChannel<E>.firstOrNull(predicate: (E) -> Bo
  * Returns first index of [element], or -1 if the channel does not contain element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.indexOf(element: E): Int {
     var index = 0
@@ -271,9 +287,9 @@ public suspend fun <E> ReceiveChannel<E>.indexOf(element: E): Int {
  * Returns index of the first element matching the given [predicate], or -1 if the channel does not contain such element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.indexOfFirst(predicate: (E) -> Boolean): Int {
+public suspend inline fun <E> ReceiveChannel<E>.indexOfFirst(predicate: (E) -> Boolean): Int {
     var index = 0
     consumeEach {
         if (predicate(it))
@@ -287,7 +303,7 @@ public inline suspend fun <E> ReceiveChannel<E>.indexOfFirst(predicate: (E) -> B
  * Returns index of the last element matching the given [predicate], or -1 if the channel does not contain such element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public inline suspend fun <E> ReceiveChannel<E>.indexOfLast(predicate: (E) -> Boolean): Int {
     var lastIndex = -1
@@ -305,7 +321,7 @@ public inline suspend fun <E> ReceiveChannel<E>.indexOfLast(predicate: (E) -> Bo
  * @throws [NoSuchElementException] if the channel is empty.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.last(): E =
     consume {
@@ -323,9 +339,9 @@ public suspend fun <E> ReceiveChannel<E>.last(): E =
  * @throws [NoSuchElementException] if no such element is found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.last(predicate: (E) -> Boolean): E {
+public suspend inline fun <E> ReceiveChannel<E>.last(predicate: (E) -> Boolean): E {
     var last: E? = null
     var found = false
     consumeEach {
@@ -343,7 +359,7 @@ public inline suspend fun <E> ReceiveChannel<E>.last(predicate: (E) -> Boolean):
  * Returns last index of [element], or -1 if the channel does not contain element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.lastIndexOf(element: E): Int {
     var lastIndex = -1
@@ -360,7 +376,7 @@ public suspend fun <E> ReceiveChannel<E>.lastIndexOf(element: E): Int {
  * Returns the last element, or `null` if the channel is empty.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.lastOrNull(): E? =
     consume {
@@ -377,9 +393,9 @@ public suspend fun <E> ReceiveChannel<E>.lastOrNull(): E? =
  * Returns the last element matching the given [predicate], or `null` if no such element was found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.lastOrNull(predicate: (E) -> Boolean): E? {
+public suspend inline fun <E> ReceiveChannel<E>.lastOrNull(predicate: (E) -> Boolean): E? {
     var last: E? = null
     consumeEach {
         if (predicate(it)) {
@@ -393,7 +409,7 @@ public inline suspend fun <E> ReceiveChannel<E>.lastOrNull(predicate: (E) -> Boo
  * Returns the single element, or throws an exception if the channel is empty or has more than one element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.single(): E =
     consume {
@@ -410,9 +426,9 @@ public suspend fun <E> ReceiveChannel<E>.single(): E =
  * Returns the single element matching the given [predicate], or throws exception if there is no or more than one matching element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.single(predicate: (E) -> Boolean): E {
+public suspend inline fun <E> ReceiveChannel<E>.single(predicate: (E) -> Boolean): E {
     var single: E? = null
     var found = false
     consumeEach {
@@ -431,7 +447,7 @@ public inline suspend fun <E> ReceiveChannel<E>.single(predicate: (E) -> Boolean
  * Returns single element, or `null` if the channel is empty or has more than one element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E> ReceiveChannel<E>.singleOrNull(): E? =
     consume {
@@ -448,9 +464,9 @@ public suspend fun <E> ReceiveChannel<E>.singleOrNull(): E? =
  * Returns the single element matching the given [predicate], or `null` if element was not found or more than one element was found.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E> ReceiveChannel<E>.singleOrNull(predicate: (E) -> Boolean): E? {
+public suspend inline fun <E> ReceiveChannel<E>.singleOrNull(predicate: (E) -> Boolean): E? {
     var single: E? = null
     var found = false
     consumeEach {
@@ -468,22 +484,20 @@ public inline suspend fun <E> ReceiveChannel<E>.singleOrNull(predicate: (E) -> B
  * Returns a channel containing all elements except first [n] elements.
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public fun <E> ReceiveChannel<E>.drop(n: Int, context: CoroutineContext = Unconfined): ReceiveChannel<E> =
-    produce(context) {
-        consume {
-            require(n >= 0) { "Requested element count $n is less than zero." }
-            var remaining: Int = n
-            if (remaining > 0)
-                for (element in this@drop) {
-                    remaining--
-                    if (remaining == 0)
-                        break
-                }
-            for (element in this@drop) {
-                send(element)
+    produce(context, onCompletion = cancel) {
+        require(n >= 0) { "Requested element count $n is less than zero." }
+        var remaining: Int = n
+        if (remaining > 0)
+            for (e in this@drop) {
+                remaining--
+                if (remaining == 0)
+                    break
             }
+        for (e in this@drop) {
+            send(e)
         }
     }
 
@@ -491,21 +505,19 @@ public fun <E> ReceiveChannel<E>.drop(n: Int, context: CoroutineContext = Unconf
  * Returns a channel containing all elements except first elements that satisfy the given [predicate].
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 // todo: mark predicate with crossinline modifier when it is supported: https://youtrack.jetbrains.com/issue/KT-19159
 public fun <E> ReceiveChannel<E>.dropWhile(context: CoroutineContext = Unconfined, predicate: suspend (E) -> Boolean): ReceiveChannel<E> =
-    produce(context) {
-        consume {
-            for (element in this@dropWhile) {
-                if (!predicate(element)) {
-                    send(element)
-                    break
-                }
+    produce(context, onCompletion = cancel) {
+        for (e in this@dropWhile) {
+            if (!predicate(e)) {
+                send(e)
+                break
             }
-            for (element in this@dropWhile) {
-                send(element)
-            }
+        }
+        for (e in this@dropWhile) {
+            send(e)
         }
     }
 
@@ -513,13 +525,13 @@ public fun <E> ReceiveChannel<E>.dropWhile(context: CoroutineContext = Unconfine
  * Returns a channel containing only elements matching the given [predicate].
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 // todo: mark predicate with crossinline modifier when it is supported: https://youtrack.jetbrains.com/issue/KT-19159
 public fun <E> ReceiveChannel<E>.filter(context: CoroutineContext = Unconfined, predicate: suspend (E) -> Boolean): ReceiveChannel<E> =
-    produce(context) {
-        consumeEach {
-            if (predicate(it)) send(it)
+    produce(context, onCompletion = cancel ) {
+        for (e in this@filter) {
+            if (predicate(e)) send(e)
         }
     }
 
@@ -529,14 +541,14 @@ public fun <E> ReceiveChannel<E>.filter(context: CoroutineContext = Unconfined, 
  * and returns the result of predicate evaluation on the element.
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 // todo: mark predicate with crossinline modifier when it is supported: https://youtrack.jetbrains.com/issue/KT-19159
 public fun <E> ReceiveChannel<E>.filterIndexed(context: CoroutineContext = Unconfined, predicate: suspend (index: Int, E) -> Boolean): ReceiveChannel<E> =
-    produce(context) {
+    produce(context, onCompletion = cancel) {
         var index = 0
-        consumeEach {
-            if (predicate(index++, it)) send(it)
+        for (e in this@filterIndexed) {
+            if (predicate(index++, e)) send(e)
         }
     }
 
@@ -546,9 +558,9 @@ public fun <E> ReceiveChannel<E>.filterIndexed(context: CoroutineContext = Uncon
  * and returns the result of predicate evaluation on the element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.filterIndexedTo(destination: C, predicate: (index: Int, E) -> Boolean): C {
+public suspend inline fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.filterIndexedTo(destination: C, predicate: (index: Int, E) -> Boolean): C {
     consumeEachIndexed { (index, element) ->
         if (predicate(index, element)) destination.add(element)
     }
@@ -561,9 +573,9 @@ public inline suspend fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.fil
  * and returns the result of predicate evaluation on the element.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterIndexedTo(destination: C, predicate: (index: Int, E) -> Boolean): C {
+public suspend inline fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterIndexedTo(destination: C, predicate: (index: Int, E) -> Boolean): C {
     consumeEachIndexed { (index, element) ->
         if (predicate(index, element)) destination.send(element)
     }
@@ -574,18 +586,13 @@ public inline suspend fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterIndexe
  * Returns a channel containing all elements not matching the given [predicate].
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 // todo: mark predicate with crossinline modifier when it is supported: https://youtrack.jetbrains.com/issue/KT-19159
 public fun <E> ReceiveChannel<E>.filterNot(context: CoroutineContext = Unconfined, predicate: suspend (E) -> Boolean): ReceiveChannel<E> =
     filter(context) { !predicate(it) }
 
 /**
- * Returns a channel containing all elements not matching the given [predicate].
- *
- * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
- *
  * @suppress **Deprecated**: For binary compatibility only
  */
 @Deprecated("For binary compatibility only", level = DeprecationLevel.HIDDEN)
@@ -595,7 +602,7 @@ public fun <E> ReceiveChannel<E>.filterNot(predicate: suspend (E) -> Boolean): R
  * Returns a channel containing all elements that are not `null`.
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 @Suppress("UNCHECKED_CAST")
 public fun <E : Any> ReceiveChannel<E?>.filterNotNull(): ReceiveChannel<E> =
@@ -605,7 +612,7 @@ public fun <E : Any> ReceiveChannel<E?>.filterNotNull(): ReceiveChannel<E> =
  * Appends all elements that are not `null` to the given [destination].
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E : Any, C : MutableCollection<in E>> ReceiveChannel<E?>.filterNotNullTo(destination: C): C {
     consumeEach {
@@ -618,7 +625,7 @@ public suspend fun <E : Any, C : MutableCollection<in E>> ReceiveChannel<E?>.fil
  * Appends all elements that are not `null` to the given [destination].
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public suspend fun <E : Any, C : SendChannel<E>> ReceiveChannel<E?>.filterNotNullTo(destination: C): C {
     consumeEach {
@@ -631,9 +638,9 @@ public suspend fun <E : Any, C : SendChannel<E>> ReceiveChannel<E?>.filterNotNul
  * Appends all elements not matching the given [predicate] to the given [destination].
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.filterNotTo(destination: C, predicate: (E) -> Boolean): C {
+public suspend inline fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.filterNotTo(destination: C, predicate: (E) -> Boolean): C {
     consumeEach {
         if (!predicate(it)) destination.add(it)
     }
@@ -644,9 +651,9 @@ public inline suspend fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.fil
  * Appends all elements not matching the given [predicate] to the given [destination].
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterNotTo(destination: C, predicate: (E) -> Boolean): C {
+public suspend inline fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterNotTo(destination: C, predicate: (E) -> Boolean): C {
     consumeEach {
         if (!predicate(it)) destination.send(it)
     }
@@ -657,9 +664,9 @@ public inline suspend fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterNotTo(
  * Appends all elements matching the given [predicate] to the given [destination].
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.filterTo(destination: C, predicate: (E) -> Boolean): C {
+public suspend inline fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.filterTo(destination: C, predicate: (E) -> Boolean): C {
     consumeEach {
         if (predicate(it)) destination.add(it)
     }
@@ -670,9 +677,9 @@ public inline suspend fun <E, C : MutableCollection<in E>> ReceiveChannel<E>.fil
  * Appends all elements matching the given [predicate] to the given [destination].
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterTo(destination: C, predicate: (E) -> Boolean): C {
+public suspend inline fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterTo(destination: C, predicate: (E) -> Boolean): C {
     consumeEach {
         if (predicate(it)) destination.send(it)
     }
@@ -683,20 +690,18 @@ public inline suspend fun <E, C : SendChannel<E>> ReceiveChannel<E>.filterTo(des
  * Returns a channel containing first [n] elements.
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 public fun <E> ReceiveChannel<E>.take(n: Int, context: CoroutineContext = Unconfined): ReceiveChannel<E> =
-    produce(context) {
-        consume {
-            if (n == 0) return@produce
-            require(n >= 0) { "Requested element count $n is less than zero." }
-            var remaining: Int = n
-            for (element in this@take) {
-                send(element)
-                remaining--
-                if (remaining == 0)
-                    return@produce
-            }
+    produce(context, onCompletion = cancel) {
+        if (n == 0) return@produce
+        require(n >= 0) { "Requested element count $n is less than zero." }
+        var remaining: Int = n
+        for (e in this@take) {
+            send(e)
+            remaining--
+            if (remaining == 0)
+                return@produce
         }
     }
 
@@ -704,14 +709,14 @@ public fun <E> ReceiveChannel<E>.take(n: Int, context: CoroutineContext = Unconf
  * Returns a channel containing first elements satisfying the given [predicate].
  *
  * The operation is _intermediate_ and _stateless_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
 // todo: mark predicate with crossinline modifier when it is supported: https://youtrack.jetbrains.com/issue/KT-19159
 public fun <E> ReceiveChannel<E>.takeWhile(context: CoroutineContext = Unconfined, predicate: suspend (E) -> Boolean): ReceiveChannel<E> =
-    produce(context) {
-        consumeEach {
-            if (!predicate(it)) return@produce
-            send(it)
+    produce(context, onCompletion = cancel) {
+        for (e in this@takeWhile) {
+            if (!predicate(e)) return@produce
+            send(e)
         }
     }
 
@@ -724,9 +729,9 @@ public fun <E> ReceiveChannel<E>.takeWhile(context: CoroutineContext = Unconfine
  * The returned map preserves the entry iteration order of the original channel.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, K, V> ReceiveChannel<E>.associate(transform: (E) -> Pair<K, V>): Map<K, V> =
+public suspend inline fun <E, K, V> ReceiveChannel<E>.associate(transform: (E) -> Pair<K, V>): Map<K, V> =
     associateTo(LinkedHashMap(), transform)
 
 /**
@@ -738,9 +743,9 @@ public inline suspend fun <E, K, V> ReceiveChannel<E>.associate(transform: (E) -
  * The returned map preserves the entry iteration order of the original channel.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, K> ReceiveChannel<E>.associateBy(keySelector: (E) -> K): Map<K, E> =
+public suspend inline fun <E, K> ReceiveChannel<E>.associateBy(keySelector: (E) -> K): Map<K, E> =
     associateByTo(LinkedHashMap(), keySelector)
 
 /**
@@ -751,9 +756,9 @@ public inline suspend fun <E, K> ReceiveChannel<E>.associateBy(keySelector: (E) 
  * The returned map preserves the entry iteration order of the original channel.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, K, V> ReceiveChannel<E>.associateBy(keySelector: (E) -> K, valueTransform: (E) -> V): Map<K, V> =
+public suspend inline fun <E, K, V> ReceiveChannel<E>.associateBy(keySelector: (E) -> K, valueTransform: (E) -> V): Map<K, V> =
     associateByTo(LinkedHashMap(), keySelector, valueTransform)
 
 /**
@@ -764,9 +769,9 @@ public inline suspend fun <E, K, V> ReceiveChannel<E>.associateBy(keySelector: (
  * If any two elements would have the same key returned by [keySelector] the last one gets added to the map.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, K, M : MutableMap<in K, in E>> ReceiveChannel<E>.associateByTo(destination: M, keySelector: (E) -> K): M {
+public suspend inline fun <E, K, M : MutableMap<in K, in E>> ReceiveChannel<E>.associateByTo(destination: M, keySelector: (E) -> K): M {
     consumeEach {
         destination.put(keySelector(it), it)
     }
@@ -781,9 +786,9 @@ public inline suspend fun <E, K, M : MutableMap<in K, in E>> ReceiveChannel<E>.a
  * If any two elements would have the same key returned by [keySelector] the last one gets added to the map.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, K, V, M : MutableMap<in K, in V>> ReceiveChannel<E>.associateByTo(destination: M, keySelector: (E) -> K, valueTransform: (E) -> V): M {
+public suspend inline fun <E, K, V, M : MutableMap<in K, in V>> ReceiveChannel<E>.associateByTo(destination: M, keySelector: (E) -> K, valueTransform: (E) -> V): M {
     consumeEach {
         destination.put(keySelector(it), valueTransform(it))
     }
@@ -797,9 +802,9 @@ public inline suspend fun <E, K, V, M : MutableMap<in K, in V>> ReceiveChannel<E
  * If any of two pairs would have the same key the last one gets added to the map.
  *
  * The operation is _terminal_.
- * This function [consumes][consume] all elements of the original [ReceiveChannel].
+ * This function [consumes][ReceiveChannel.consume] all elements of the original [ReceiveChannel].
  */
-public inline suspend fun <E, K, V, M : MutableMap<in K, in V>> ReceiveChannel<E>.associateTo(destination: M, transform: (E) -> Pair<K, V>): M {
+public suspend inline fun <E, K, V, M : MutableMap<in K, in V>> ReceiveChannel<E>.associateTo(destination: M, transform: (E) -> Pair<K, V>): M {
     consumeEach {
         destination += transform(it)
     }
@@ -969,7 +974,7 @@ public inline suspend fun <E, K, V, M : MutableMap<in K, MutableList<V>>> Receiv
  */
 // todo: mark predicate with crossinline modifier when it is supported: https://youtrack.jetbrains.com/issue/KT-19159
 public fun <E, R> ReceiveChannel<E>.map(context: CoroutineContext = Unconfined, transform: suspend (E) -> R): ReceiveChannel<R> =
-    produce(context) {
+    produce(context, onCompletion = { cancel(it) }) {
         consumeEach {
             send(transform(it))
         }
